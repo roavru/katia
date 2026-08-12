@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, HTTPException, status
+from fastapi import FastAPI, Query, HTTPException, status, Request
 from fastapi.responses import PlainTextResponse
 from typing import Annotated
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -35,3 +35,10 @@ def verify_whatsapp_webhook(
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN, detail="Verification failed"
     )
+
+
+@app.post("/webhook/whatsapp")
+async def recieve_response(request: Request):
+    payload = await request.json()
+    print(payload, flush=True)
+    return
