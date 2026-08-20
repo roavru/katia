@@ -29,17 +29,20 @@ async def recieve_response(request: Request):
 
     value = payload["entry"][0]["changes"][0]["value"]
     messages = value.get("messages")
+    contacts = value.get("contacts")
 
     if not messages:
         return
 
     message = messages[0]
 
-    whatsapp_message_id = message["id"]
-    sender = message["from"]
+    message_id = message["id"]
+    contact_phone = message["from"]
+    business_phone_number_id = value["metadata"]["phone_number_id"]
+    contact_name = contacts[0].get("profile", {}).get("name") if contacts else None
     message_type = message["type"]
     content = message.get("text", {}).get("body")
-    sent_at = datetime.fromtimestamp(int(message["timestamp"]), tz=UTC)
+    timestamp = datetime.fromtimestamp(int(message["timestamp"]), tz=UTC)
 
     async with await psycopg.AsyncConnection.connect(
         dbname=env.postgres_db,
@@ -52,21 +55,25 @@ async def recieve_response(request: Request):
             await cursor.execute(
                 """
                 INSERT INTO messages (
-                    whatsapp_message_id,
-                    sender,
+                    message_id,
+                    contact_phone,
+                    business_phone_number_id,
+                    contact_name,
                     message_type,
                     content,
-                    sent_at
+                    timestamp
                 )
-                VALUES (%s, %s, %s, %s, %s)
-                ON CONFLICT (whatsapp_message_id) DO NOTHING
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (message_id) DO NOTHING
                 """,
                 (
-                    whatsapp_message_id,
-                    sender,
+                    message_id,
+                    contact_phone,
+                    business_phone_number_id,
+                    contact_name,
                     message_type,
                     content,
-                    sent_at,
+                    timestamp,
                 ),
             )
 
