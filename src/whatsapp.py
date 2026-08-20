@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+import json
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -8,6 +11,27 @@ from fastapi.responses import PlainTextResponse
 from config import env
 
 router = APIRouter(tags=["whatsapp"])
+
+
+def validate_signature(
+    raw_body: bytes,
+    received_signature: str | None,
+) -> bool:
+    if received_signature is None:
+        return False
+
+    expected_hash = hmac.new(
+        key=env.meta_app_secret.encode("utf-8"),
+        msg=raw_body,
+        digestmod=hashlib.sha256,
+    ).hexdigest()
+
+    expected_signature = f"sha256={expected_hash}"
+
+    return hmac.compare_digest(
+        expected_signature,
+        received_signature,
+    )
 
 
 @router.get("/webhook/whatsapp")
@@ -25,7 +49,26 @@ def verify_whatsapp_webhook(
 
 @router.post("/webhook/whatsapp")
 async def recieve_response(request: Request):
-    payload = await request.json()
+    raw_body = await request.body()
+
+    received_signature = request.headers.get("X-Hub-Signature-256")
+
+    if not validate_signature(
+        raw_body,
+        received_signature,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid webhook signature",
+        )
+
+    try:
+        payload = json.loads(raw_body)
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid JSON payload",
+        )
 
     value = payload["entry"][0]["changes"][0]["value"]
     messages = value.get("messages")
@@ -61,9 +104,10 @@ async def recieve_response(request: Request):
                     contact_name,
                     message_type,
                     content,
-                    timestamp
+                    timestamp,
+                    processing_status
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (message_id) DO NOTHING
                 """,
                 (
@@ -74,6 +118,7 @@ async def recieve_response(request: Request):
                     message_type,
                     content,
                     timestamp,
+                    "pending",
                 ),
             )
 
