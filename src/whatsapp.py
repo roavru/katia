@@ -5,7 +5,7 @@ import psycopg
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import PlainTextResponse
 
-from main import env
+from config import env
 
 router = APIRouter(tags=["whatsapp"])
 
